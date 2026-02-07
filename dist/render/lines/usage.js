@@ -1,6 +1,11 @@
 import { isLimitReached } from '../../types.js';
 import { getProviderLabel } from '../../stdin.js';
-import { red, yellow, dim, getContextColor, quotaBar, RESET } from '../colors.js';
+import { red, yellow, dim, getContextColor, dualQuotaBar, RESET } from '../colors.js';
+// Pricing per million tokens (USD) — Claude Opus 4
+const PRICE_INPUT = 15;
+const PRICE_OUTPUT = 75;
+const PRICE_CACHE_WRITE = 18.75;
+const PRICE_CACHE_READ = 1.875;
 export function renderUsageLine(ctx) {
     const display = ctx.config?.display;
     if (display?.showUsage === false) {
@@ -24,34 +29,53 @@ export function renderUsageLine(ctx) {
         return `${label} ${red(`⚠ Limit reached${resetTime ? ` (resets ${resetTime})` : ''}`)}`;
     }
     const threshold = display?.usageThreshold ?? 0;
-    const fiveHour = ctx.usageData.fiveHour;
-    const sevenDay = ctx.usageData.sevenDay;
-    const effectiveUsage = Math.max(fiveHour ?? 0, sevenDay ?? 0);
+    const fiveHour = ctx.usageData.fiveHour ?? 0;
+    const sevenDay = ctx.usageData.sevenDay ?? 0;
+    const effectiveUsage = Math.max(fiveHour, sevenDay);
     if (effectiveUsage < threshold) {
         return null;
     }
-    const fiveHourDisplay = formatUsagePercent(ctx.usageData.fiveHour);
-    const fiveHourReset = formatResetTime(ctx.usageData.fiveHourResetAt);
     const usageBarEnabled = display?.usageBarEnabled ?? true;
-    const fiveHourPart = usageBarEnabled
-        ? (fiveHourReset
-            ? `${quotaBar(fiveHour ?? 0)} ${fiveHourDisplay} (${fiveHourReset} / 5h)`
-            : `${quotaBar(fiveHour ?? 0)} ${fiveHourDisplay}`)
-        : (fiveHourReset
-            ? `5h: ${fiveHourDisplay} (${fiveHourReset})`
-            : `5h: ${fiveHourDisplay}`);
-    const sevenDayThreshold = display?.sevenDayThreshold ?? 80;
-    if (sevenDay !== null && sevenDay >= sevenDayThreshold) {
+    // Session cost estimate from token counts
+    const costStr = formatSessionCost(ctx);
+    if (usageBarEnabled) {
+        // Unified dual-texture bar: █ = 5h periodic, ▓ = 7d longer-term
+        const bar = dualQuotaBar(fiveHour, sevenDay);
+        const fiveHourDisplay = formatUsagePercent(fiveHour);
         const sevenDayDisplay = formatUsagePercent(sevenDay);
-        const sevenDayReset = formatResetTime(ctx.usageData.sevenDayResetAt);
-        const sevenDayPart = usageBarEnabled
-            ? (sevenDayReset
-                ? `${quotaBar(sevenDay)} ${sevenDayDisplay} (${sevenDayReset} / 7d)`
-                : `${quotaBar(sevenDay)} ${sevenDayDisplay}`)
-            : `7d: ${sevenDayDisplay}`;
-        return `${label} ${fiveHourPart} | ${sevenDayPart}`;
+        const legend = dim('5h:') + fiveHourDisplay + dim('/7d:') + sevenDayDisplay;
+        const parts = [label, bar, legend];
+        if (costStr)
+            parts.push(dim(costStr));
+        return parts.join(' ');
     }
-    return `${label} ${fiveHourPart}`;
+    // Text-only fallback
+    const fiveHourDisplay = formatUsagePercent(fiveHour);
+    const sevenDayDisplay = formatUsagePercent(sevenDay);
+    const parts = [label, `5h:${fiveHourDisplay} 7d:${sevenDayDisplay}`];
+    if (costStr)
+        parts.push(dim(costStr));
+    return parts.join(' ');
+}
+function formatSessionCost(ctx) {
+    const usage = ctx.stdin.context_window?.current_usage;
+    if (!usage)
+        return '';
+    const inputTokens = usage.input_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? 0;
+    const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+    const cacheRead = usage.cache_read_input_tokens ?? 0;
+    // Subtract cache tokens from input to avoid double-counting
+    const plainInput = Math.max(0, inputTokens - cacheWrite - cacheRead);
+    const cost = (plainInput / 1_000_000) * PRICE_INPUT +
+        (outputTokens / 1_000_000) * PRICE_OUTPUT +
+        (cacheWrite / 1_000_000) * PRICE_CACHE_WRITE +
+        (cacheRead / 1_000_000) * PRICE_CACHE_READ;
+    if (cost < 0.005)
+        return '';
+    return cost < 1
+        ? `~$${cost.toFixed(2)}`
+        : `~$${cost.toFixed(1)}`;
 }
 function formatUsagePercent(percent) {
     if (percent === null) {

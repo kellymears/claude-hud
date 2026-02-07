@@ -8,6 +8,7 @@ const MAGENTA = '\x1b[35m';
 const CYAN = '\x1b[36m';
 const BRIGHT_BLUE = '\x1b[94m';
 const BRIGHT_MAGENTA = '\x1b[95m';
+const BRIGHT_MAGENTA_RAW = '\x1b[95m';
 
 export function green(text: string): string {
   return `${GREEN}${text}${RESET}`;
@@ -52,6 +53,41 @@ export function quotaBar(percent: number, width: number = 10): string {
   const empty = safeWidth - filled;
   const color = getQuotaColor(safePercent);
   return `${color}${'█'.repeat(filled)}${DIM}${'░'.repeat(empty)}${RESET}`;
+}
+
+/**
+ * Renders a single unified bar showing two usage percentages with different textures.
+ * periodicPct (5h) uses solid blocks █, longerPct (7d) uses medium shade ▓.
+ * The higher of the two determines the bar fill, with the lower one overlaid.
+ */
+export function dualQuotaBar(periodicPct: number, longerPct: number, width: number = 16): string {
+  const safeWidth = Number.isFinite(width) ? Math.max(0, Math.round(width)) : 0;
+  const safePeriodic = Number.isFinite(periodicPct) ? Math.min(100, Math.max(0, periodicPct)) : 0;
+  const safeLonger = Number.isFinite(longerPct) ? Math.min(100, Math.max(0, longerPct)) : 0;
+
+  const periodicFill = Math.round((safePeriodic / 100) * safeWidth);
+  const longerFill = Math.round((safeLonger / 100) * safeWidth);
+
+  const periodicColor = getQuotaColor(safePeriodic);
+  const longerColor = DIM + BRIGHT_MAGENTA_RAW;
+
+  let bar = '';
+  for (let i = 0; i < safeWidth; i++) {
+    if (i < periodicFill && i < longerFill) {
+      // Both — show solid block in periodic color
+      bar += `${periodicColor}█`;
+    } else if (i < periodicFill) {
+      // Only periodic — solid block
+      bar += `${periodicColor}█`;
+    } else if (i < longerFill) {
+      // Only longer-term — medium shade
+      bar += `${longerColor}▓`;
+    } else {
+      // Empty
+      bar += `${DIM}░`;
+    }
+  }
+  return `${bar}${RESET}`;
 }
 
 export function coloredBar(percent: number, width: number = 10): string {

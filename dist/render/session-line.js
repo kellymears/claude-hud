@@ -1,7 +1,7 @@
 import { isLimitReached } from '../types.js';
 import { getContextPercent, getBufferedPercent, getModelName, getProviderLabel, getTotalTokens } from '../stdin.js';
 import { getOutputSpeed } from '../speed-tracker.js';
-import { coloredBar, cyan, dim, magenta, red, yellow, getContextColor, quotaBar, RESET } from './colors.js';
+import { coloredBar, cyan, dim, magenta, red, yellow, getContextColor, dualQuotaBar, RESET } from './colors.js';
 const DEBUG = process.env.DEBUG?.includes('claude-hud') || process.env.DEBUG === '*';
 /**
  * Renders the full session line (model + context bar + project + git + counts + usage + duration).
@@ -120,33 +120,23 @@ export function renderSessionLine(ctx) {
         }
         else {
             const usageThreshold = display?.usageThreshold ?? 0;
-            const fiveHour = ctx.usageData.fiveHour;
-            const sevenDay = ctx.usageData.sevenDay;
-            const effectiveUsage = Math.max(fiveHour ?? 0, sevenDay ?? 0);
+            const fiveHour = ctx.usageData.fiveHour ?? 0;
+            const sevenDay = ctx.usageData.sevenDay ?? 0;
+            const effectiveUsage = Math.max(fiveHour, sevenDay);
             if (effectiveUsage >= usageThreshold) {
-                const fiveHourDisplay = formatUsagePercent(fiveHour);
-                const fiveHourReset = formatResetTime(ctx.usageData.fiveHourResetAt);
                 const usageBarEnabled = display?.usageBarEnabled ?? true;
-                const fiveHourPart = usageBarEnabled
-                    ? (fiveHourReset
-                        ? `${quotaBar(fiveHour ?? 0)} ${fiveHourDisplay} (${fiveHourReset} / 5h)`
-                        : `${quotaBar(fiveHour ?? 0)} ${fiveHourDisplay}`)
-                    : (fiveHourReset
-                        ? `5h: ${fiveHourDisplay} (${fiveHourReset})`
-                        : `5h: ${fiveHourDisplay}`);
-                const sevenDayThreshold = display?.sevenDayThreshold ?? 80;
-                if (sevenDay !== null && sevenDay >= sevenDayThreshold) {
-                    const sevenDayDisplay = formatUsagePercent(sevenDay);
-                    const sevenDayReset = formatResetTime(ctx.usageData.sevenDayResetAt);
-                    const sevenDayPart = usageBarEnabled
-                        ? (sevenDayReset
-                            ? `${quotaBar(sevenDay)} ${sevenDayDisplay} (${sevenDayReset} / 7d)`
-                            : `${quotaBar(sevenDay)} ${sevenDayDisplay}`)
-                        : `7d: ${sevenDayDisplay}`;
-                    parts.push(`${fiveHourPart} | ${sevenDayPart}`);
+                const fiveHourDisplay = formatUsagePercent(fiveHour);
+                const sevenDayDisplay = formatUsagePercent(sevenDay);
+                const costStr = formatSessionCost(ctx);
+                if (usageBarEnabled) {
+                    const bar = dualQuotaBar(fiveHour, sevenDay, 12);
+                    const legend = dim('5h:') + fiveHourDisplay + dim('/7d:') + sevenDayDisplay;
+                    const usagePart = `${bar} ${legend}`;
+                    parts.push(costStr ? `${usagePart} ${dim(costStr)}` : usagePart);
                 }
                 else {
-                    parts.push(fiveHourPart);
+                    const usagePart = `5h:${fiveHourDisplay} 7d:${sevenDayDisplay}`;
+                    parts.push(costStr ? `${usagePart} ${dim(costStr)}` : usagePart);
                 }
             }
         }
@@ -224,5 +214,29 @@ function formatResetTime(resetAt) {
     const hours = Math.floor(diffMins / 60);
     const mins = diffMins % 60;
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+// Pricing per million tokens (USD) — Claude Opus 4
+const PRICE_INPUT = 15;
+const PRICE_OUTPUT = 75;
+const PRICE_CACHE_WRITE = 18.75;
+const PRICE_CACHE_READ = 1.875;
+function formatSessionCost(ctx) {
+    const usage = ctx.stdin.context_window?.current_usage;
+    if (!usage)
+        return '';
+    const inputTokens = usage.input_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? 0;
+    const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+    const cacheRead = usage.cache_read_input_tokens ?? 0;
+    const plainInput = Math.max(0, inputTokens - cacheWrite - cacheRead);
+    const cost = (plainInput / 1_000_000) * PRICE_INPUT +
+        (outputTokens / 1_000_000) * PRICE_OUTPUT +
+        (cacheWrite / 1_000_000) * PRICE_CACHE_WRITE +
+        (cacheRead / 1_000_000) * PRICE_CACHE_READ;
+    if (cost < 0.005)
+        return '';
+    return cost < 1
+        ? `~$${cost.toFixed(2)}`
+        : `~$${cost.toFixed(1)}`;
 }
 //# sourceMappingURL=session-line.js.map
