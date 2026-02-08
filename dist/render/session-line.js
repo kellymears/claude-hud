@@ -1,6 +1,7 @@
 import { isLimitReached } from '../types.js';
 import { getContextPercent, getBufferedPercent, getModelName, getProviderLabel, getTotalTokens } from '../stdin.js';
 import { getOutputSpeed } from '../speed-tracker.js';
+import { formatCost } from '../cost-tracker.js';
 import { coloredBar, cyan, dim, magenta, red, yellow, getContextColor, dualQuotaBar, RESET } from './colors.js';
 const DEBUG = process.env.DEBUG?.includes('claude-hud') || process.env.DEBUG === '*';
 /**
@@ -127,7 +128,7 @@ export function renderSessionLine(ctx) {
                 const usageBarEnabled = display?.usageBarEnabled ?? true;
                 const fiveHourDisplay = formatUsagePercent(fiveHour);
                 const sevenDayDisplay = formatUsagePercent(sevenDay);
-                const costStr = formatSessionCost(ctx);
+                const costStr = formatCost(ctx.windowCost);
                 if (usageBarEnabled) {
                     const bar = dualQuotaBar(fiveHour, sevenDay, 12);
                     const legend = dim('5h:') + fiveHourDisplay + dim('/7d:') + sevenDayDisplay;
@@ -214,29 +215,5 @@ function formatResetTime(resetAt) {
     const hours = Math.floor(diffMins / 60);
     const mins = diffMins % 60;
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-}
-// Pricing per million tokens (USD) — Claude Opus 4
-const PRICE_INPUT = 15;
-const PRICE_OUTPUT = 75;
-const PRICE_CACHE_WRITE = 18.75;
-const PRICE_CACHE_READ = 1.875;
-function formatSessionCost(ctx) {
-    const usage = ctx.stdin.context_window?.current_usage;
-    if (!usage)
-        return '';
-    const inputTokens = usage.input_tokens ?? 0;
-    const outputTokens = usage.output_tokens ?? 0;
-    const cacheWrite = usage.cache_creation_input_tokens ?? 0;
-    const cacheRead = usage.cache_read_input_tokens ?? 0;
-    const plainInput = Math.max(0, inputTokens - cacheWrite - cacheRead);
-    const cost = (plainInput / 1_000_000) * PRICE_INPUT +
-        (outputTokens / 1_000_000) * PRICE_OUTPUT +
-        (cacheWrite / 1_000_000) * PRICE_CACHE_WRITE +
-        (cacheRead / 1_000_000) * PRICE_CACHE_READ;
-    if (cost < 0.005)
-        return '';
-    return cost < 1
-        ? `~$${cost.toFixed(2)}`
-        : `~$${cost.toFixed(1)}`;
 }
 //# sourceMappingURL=session-line.js.map

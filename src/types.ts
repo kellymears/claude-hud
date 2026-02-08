@@ -86,4 +86,6 @@ export interface RenderContext {
   usageData: UsageData | null;
   config: HudConfig;
   extraLabel: string | null;
+  /** Estimated total cost for the rolling 5-hour usage window */
+  windowCost: number;
 }

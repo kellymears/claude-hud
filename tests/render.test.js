@@ -28,6 +28,7 @@ function baseContext() {
     sessionDuration: '',
     gitStatus: null,
     usageData: null,
+    windowCost: 0,
     config: {
       lineLayout: 'compact',
       showSeparators: false,

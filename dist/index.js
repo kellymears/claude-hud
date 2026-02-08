@@ -6,6 +6,7 @@ import { getGitStatus } from './git.js';
 import { getUsage } from './usage-api.js';
 import { loadConfig } from './config.js';
 import { parseExtraCmdArg, runExtraCmd } from './extra-cmd.js';
+import { getWindowCost } from './cost-tracker.js';
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
 export async function main(overrides = {}) {
@@ -43,6 +44,7 @@ export async function main(overrides = {}) {
         const extraCmd = deps.parseExtraCmdArg();
         const extraLabel = extraCmd ? await deps.runExtraCmd(extraCmd) : null;
         const sessionDuration = formatSessionDuration(transcript.sessionStart, deps.now);
+        const windowCost = getWindowCost(stdin.context_window?.current_usage, stdin.transcript_path ?? '');
         const ctx = {
             stdin,
             transcript,
@@ -55,6 +57,7 @@ export async function main(overrides = {}) {
             usageData,
             config,
             extraLabel,
+            windowCost,
         };
         deps.render(ctx);
     }

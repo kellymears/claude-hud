@@ -1,13 +1,8 @@
 import type { RenderContext } from '../../types.js';
 import { isLimitReached } from '../../types.js';
 import { getProviderLabel } from '../../stdin.js';
+import { formatCost } from '../../cost-tracker.js';
 import { red, yellow, dim, getContextColor, dualQuotaBar, RESET } from '../colors.js';
-
-// Pricing per million tokens (USD) — Claude Opus 4
-const PRICE_INPUT = 15;
-const PRICE_OUTPUT = 75;
-const PRICE_CACHE_WRITE = 18.75;
-const PRICE_CACHE_READ = 1.875;
 
 export function renderUsageLine(ctx: RenderContext): string | null {
   const display = ctx.config?.display;
@@ -49,8 +44,8 @@ export function renderUsageLine(ctx: RenderContext): string | null {
 
   const usageBarEnabled = display?.usageBarEnabled ?? true;
 
-  // Session cost estimate from token counts
-  const costStr = formatSessionCost(ctx);
+  // Window cost estimate (accumulated across compressions/sessions)
+  const costStr = formatCost(ctx.windowCost);
 
   if (usageBarEnabled) {
     // Unified dual-texture bar: █ = 5h periodic, ▓ = 7d longer-term
@@ -69,30 +64,6 @@ export function renderUsageLine(ctx: RenderContext): string | null {
   const parts = [label, `5h:${fiveHourDisplay} 7d:${sevenDayDisplay}`];
   if (costStr) parts.push(dim(costStr));
   return parts.join(' ');
-}
-
-function formatSessionCost(ctx: RenderContext): string {
-  const usage = ctx.stdin.context_window?.current_usage;
-  if (!usage) return '';
-
-  const inputTokens = usage.input_tokens ?? 0;
-  const outputTokens = usage.output_tokens ?? 0;
-  const cacheWrite = usage.cache_creation_input_tokens ?? 0;
-  const cacheRead = usage.cache_read_input_tokens ?? 0;
-
-  // Subtract cache tokens from input to avoid double-counting
-  const plainInput = Math.max(0, inputTokens - cacheWrite - cacheRead);
-
-  const cost =
-    (plainInput / 1_000_000) * PRICE_INPUT +
-    (outputTokens / 1_000_000) * PRICE_OUTPUT +
-    (cacheWrite / 1_000_000) * PRICE_CACHE_WRITE +
-    (cacheRead / 1_000_000) * PRICE_CACHE_READ;
-
-  if (cost < 0.005) return '';
-  return cost < 1
-    ? `~$${cost.toFixed(2)}`
-    : `~$${cost.toFixed(1)}`;
 }
 
 function formatUsagePercent(percent: number | null): string {

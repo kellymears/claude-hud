@@ -6,6 +6,7 @@ import { getGitStatus } from './git.js';
 import { getUsage } from './usage-api.js';
 import { loadConfig } from './config.js';
 import { parseExtraCmdArg, runExtraCmd } from './extra-cmd.js';
+import { getWindowCost } from './cost-tracker.js';
 import type { RenderContext } from './types.js';
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
@@ -68,6 +69,11 @@ export async function main(overrides: Partial<MainDeps> = {}): Promise<void> {
 
     const sessionDuration = formatSessionDuration(transcript.sessionStart, deps.now);
 
+    const windowCost = getWindowCost(
+      stdin.context_window?.current_usage,
+      stdin.transcript_path ?? '',
+    );
+
     const ctx: RenderContext = {
       stdin,
       transcript,
@@ -80,6 +86,7 @@ export async function main(overrides: Partial<MainDeps> = {}): Promise<void> {
       usageData,
       config,
       extraLabel,
+      windowCost,
     };
 
     deps.render(ctx);
